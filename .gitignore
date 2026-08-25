@@ -1,0 +1,60 @@
+# ==========================================
+# ENVIRONMENT VARIABLES / SECRETS
+# ==========================================
+.env
+.env.*
+!.env.example
+
+# ==========================================
+# PYTHON
+# ==========================================
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Python cache
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# ==========================================
+# NODE / REACT / VITE
+# ==========================================
+frontend/node_modules/
+node_modules/
+frontend/dist/
+dist/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ==========================================
+# GENERATED PROJECT DATA
+# ==========================================
+uploads/
+results/
+reports/
+
+# Optional generated database files
+*.db
+*.sqlite
+*.sqlite3
+
+# ==========================================
+# IDE / OS FILES
+# ==========================================
+.vscode/
+.idea/
+
+.DS_Store
+Thumbs.db
+# Generated evaluation data
+data/evaluation_history.json
+data/responses.csv
