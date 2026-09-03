@@ -43,7 +43,6 @@ function App() {
       apiKey: "",
       modelName: "",
       datasetType: "default",
-      testMode: true,
     });
 
   // ========================================
@@ -602,8 +601,7 @@ function App() {
             ? uploadedDataset.filename
             : null,
 
-        test_mode:
-          modelConfig.testMode,
+        test_mode: false,
       };
 
       try {
@@ -1524,48 +1522,6 @@ function App() {
 
             </div>
 
-            {/* TEST MODE */}
-
-            <div className="dataset-section">
-
-              <h3>
-                Evaluation Mode
-              </h3>
-
-              <label className="radio-option">
-
-                <input
-                  type="checkbox"
-                  checked={
-                    modelConfig.testMode
-                  }
-                  disabled={isEvaluating}
-                  onChange={(event) =>
-                    setModelConfig({
-                      ...modelConfig,
-                      testMode:
-                        event.target.checked,
-                    })
-                  }
-                />
-
-                <div className="dataset-text">
-
-                  <span>
-                    Test Mode
-                  </span>
-
-                  <small>
-                    Run only 10 prompts across
-                    multiple safety categories.
-                  </small>
-
-                </div>
-
-              </label>
-
-            </div>
-
             {/* DATASET */}
 
             <div className="dataset-section">
@@ -1603,11 +1559,7 @@ function App() {
                     </span>
 
                     <small>
-
-                      {modelConfig.testMode
-                        ? "10 selected test prompts"
-                        : "120 test prompts"}
-
+                      Prompts
                     </small>
 
                   </div>
@@ -1641,11 +1593,7 @@ function App() {
                     </span>
 
                     <small>
-
-                      {uploadedDataset
-                        ? `${uploadedDataset.total_tests} uploaded test prompts`
-                        : "Upload a dataset from the sidebar"}
-
+                      Prompts
                     </small>
 
                   </div>
@@ -2174,5 +2122,6 @@ function App() {
     </div>
   );
 }
+
 
 export default App;
