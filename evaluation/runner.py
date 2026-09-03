@@ -21,55 +21,7 @@ from evaluation.response_storage import (
 
 
 # ========================================
-# SELECT TEST CASES FOR TEST MODE
-# ========================================
-
-def select_test_cases(benchmark):
-    """
-    Select exactly 15 test cases for test mode.
-
-    Coverage:
-    - 3 Hallucination
-    - 3 Bias
-    - 3 Toxicity
-    - 2 Jailbreak
-    - 2 Prompt Injection
-    - 2 Reasoning
-    """
-
-    category_limits = {
-        "hallucination": 3,
-        "bias": 3,
-        "toxicity": 3,
-        "jailbreak": 2,
-        "prompt_injection": 2,
-        "reasoning": 2
-    }
-
-    selected_cases = []
-
-    for category, limit in category_limits.items():
-
-        category_cases = benchmark[
-            benchmark["category"] == category
-        ].head(limit)
-
-        selected_cases.append(
-            category_cases
-        )
-
-    if not selected_cases:
-
-        return benchmark.head(0)
-
-    return pd.concat(
-        selected_cases,
-        ignore_index=True
-    )
-
-
-# ========================================
-# RUN EVALUATION
+# RUN FULL EVALUATION
 # ========================================
 
 def run_evaluation(
@@ -90,19 +42,16 @@ def run_evaluation(
     # ========================================
 
     if not endpoint:
-
         raise ValueError(
             "API endpoint is required to evaluate an LLM."
         )
 
     if not api_key:
-
         raise ValueError(
             "API key is required to evaluate an LLM."
         )
 
     if not model_name:
-
         raise ValueError(
             "Model name is required to evaluate an LLM."
         )
@@ -111,12 +60,9 @@ def run_evaluation(
     # VALIDATE DATASET PATH
     # ========================================
 
-    dataset_path = Path(
-        dataset_path
-    )
+    dataset_path = Path(dataset_path)
 
     if not dataset_path.exists():
-
         raise FileNotFoundError(
             f"Dataset not found: {dataset_path}"
         )
@@ -129,44 +75,26 @@ def run_evaluation(
         f"Loading dataset: {dataset_path}"
     )
 
-    benchmark = load_benchmark(
-        dataset_path
+    benchmark = load_benchmark(dataset_path)
+
+    total_loaded = len(benchmark)
+
+    print(
+        f"Total test cases loaded: {total_loaded}\n"
+    )
+
+    # ========================================
+    # ALWAYS RUN FULL DATASET
+    # ========================================
+
+    print(
+        "FULL EVALUATION MODE ENABLED"
     )
 
     print(
-        f"Total test cases loaded: {len(benchmark)}\n"
+        f"Running all {len(benchmark)} "
+        "test cases.\n"
     )
-
-    # ========================================
-    # TEST MODE
-    # ========================================
-
-    if test_mode:
-
-        benchmark = select_test_cases(
-            benchmark
-        )
-
-        print(
-            "TEST MODE ENABLED"
-        )
-
-        print(
-            f"Selected {len(benchmark)} "
-            "test cases across multiple "
-            "evaluation categories.\n"
-        )
-
-    else:
-
-        print(
-            "FULL EVALUATION MODE ENABLED"
-        )
-
-        print(
-            f"Running all {len(benchmark)} "
-            "test cases.\n"
-        )
 
     # ========================================
     # INITIALIZE RESULTS
@@ -195,7 +123,8 @@ def run_evaluation(
             )
 
             print(
-                "They will be skipped.\n"
+                "Previously completed cases "
+                "will be skipped.\n"
             )
 
     # ========================================
@@ -203,13 +132,13 @@ def run_evaluation(
     # ========================================
 
     tests_to_run = benchmark[
-        ~benchmark["id"].isin(
-            completed_ids
-        )
-    ]
+        ~benchmark["id"].isin(completed_ids)
+    ].copy()
 
-    total_tests = len(
-        tests_to_run
+    total_tests = len(tests_to_run)
+
+    print(
+        f"Tests remaining to run: {total_tests}\n"
     )
 
     completed_count = 0
@@ -236,7 +165,7 @@ def run_evaluation(
     if total_tests == 0:
 
         print(
-            "No test cases available to evaluate."
+            "No new test cases available to evaluate."
         )
 
         if progress_callback:
@@ -253,22 +182,16 @@ def run_evaluation(
         return results
 
     # ========================================
-    # RUN EACH TEST CASE
+    # RUN ALL TEST CASES
     # ========================================
 
     for _, test_case in tests_to_run.iterrows():
 
-        test_id = test_case[
-            "id"
-        ]
+        test_id = test_case["id"]
 
-        category = test_case[
-            "category"
-        ]
+        category = test_case["category"]
 
-        prompt = test_case[
-            "prompt"
-        ]
+        prompt = test_case["prompt"]
 
         # ========================================
         # UPDATE PROGRESS BEFORE TEST
@@ -298,6 +221,7 @@ def run_evaluation(
         # ========================================
 
         print(
+            f"\n[{completed_count + 1}/{total_tests}] "
             f"Running test: {test_id} | "
             f"Category: {category}"
         )
@@ -326,13 +250,9 @@ def run_evaluation(
 
             if category == "hallucination":
 
-                evaluation_result = (
-                    evaluate_hallucination(
-                        response,
-                        test_case[
-                            "expected_answer"
-                        ]
-                    )
+                evaluation_result = evaluate_hallucination(
+                    response,
+                    test_case["expected_answer"]
                 )
 
             # ========================================
@@ -341,13 +261,9 @@ def run_evaluation(
 
             elif category == "bias":
 
-                evaluation_result = (
-                    evaluate_bias(
-                        response,
-                        test_case[
-                            "evaluation_criteria"
-                        ]
-                    )
+                evaluation_result = evaluate_bias(
+                    response,
+                    test_case["evaluation_criteria"]
                 )
 
             # ========================================
@@ -356,13 +272,9 @@ def run_evaluation(
 
             elif category == "toxicity":
 
-                evaluation_result = (
-                    evaluate_toxicity(
-                        response,
-                        test_case[
-                            "evaluation_criteria"
-                        ]
-                    )
+                evaluation_result = evaluate_toxicity(
+                    response,
+                    test_case["evaluation_criteria"]
                 )
 
             # ========================================
@@ -371,13 +283,9 @@ def run_evaluation(
 
             elif category == "jailbreak":
 
-                evaluation_result = (
-                    evaluate_jailbreak(
-                        response,
-                        test_case[
-                            "evaluation_criteria"
-                        ]
-                    )
+                evaluation_result = evaluate_jailbreak(
+                    response,
+                    test_case["evaluation_criteria"]
                 )
 
             # ========================================
@@ -386,13 +294,9 @@ def run_evaluation(
 
             elif category == "prompt_injection":
 
-                evaluation_result = (
-                    evaluate_prompt_injection(
-                        response,
-                        test_case[
-                            "evaluation_criteria"
-                        ]
-                    )
+                evaluation_result = evaluate_prompt_injection(
+                    response,
+                    test_case["evaluation_criteria"]
                 )
 
             # ========================================
@@ -401,13 +305,9 @@ def run_evaluation(
 
             elif category == "reasoning":
 
-                evaluation_result = (
-                    evaluate_reasoning(
-                        response,
-                        test_case[
-                            "expected_answer"
-                        ]
-                    )
+                evaluation_result = evaluate_reasoning(
+                    response,
+                    test_case["expected_answer"]
                 )
 
             # ========================================
@@ -434,38 +334,26 @@ def run_evaluation(
                 "category": category,
                 "prompt": prompt,
                 "expected_answer": (
-                    test_case[
-                        "expected_answer"
-                    ]
+                    test_case["expected_answer"]
                 ),
                 "evaluation_criteria": (
-                    test_case[
-                        "evaluation_criteria"
-                    ]
+                    test_case["evaluation_criteria"]
                 ),
                 "difficulty": (
-                    test_case[
-                        "difficulty"
-                    ]
+                    test_case["difficulty"]
                 ),
                 "response": response,
                 "status": "completed",
-                "evaluation": (
-                    evaluation_result
-                )
+                "evaluation": evaluation_result
             }
 
             # ========================================
             # SAVE RESPONSE
             # ========================================
 
-            save_response(
-                result
-            )
+            save_response(result)
 
-            results.append(
-                result
-            )
+            results.append(result)
 
             print(
                 "Status: Completed"
@@ -498,9 +386,7 @@ def run_evaluation(
                 "category": category,
                 "prompt": prompt,
                 "response": None,
-                "status": (
-                    f"failed: {e}"
-                )
+                "status": f"failed: {e}"
             })
 
         # ========================================
@@ -543,9 +429,7 @@ def run_evaluation(
                 "next request..."
             )
 
-            time.sleep(
-                12
-            )
+            time.sleep(12)
 
     # ========================================
     # FINAL PROGRESS UPDATE
