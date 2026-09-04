@@ -55,6 +55,4 @@ reports/
 
 .DS_Store
 Thumbs.db
-# Generated evaluation data
-data/evaluation_history.json
 data/responses.csv
