@@ -87,6 +87,9 @@ function App() {
   const [isEvaluating, setIsEvaluating] =
     useState(false);
 
+  const [isStoppingEvaluation, setIsStoppingEvaluation] =
+    useState(false);
+
   const [evaluationId, setEvaluationId] =
     useState(null);
 
@@ -289,6 +292,82 @@ function App() {
   };
 
   // ========================================
+  // RESET EVALUATION UI
+  // ========================================
+
+  const resetEvaluationUI = () => {
+    setIsEvaluating(false);
+    setIsStoppingEvaluation(false);
+    setEvaluationId(null);
+    setProgressCategory("");
+    setProgressTest("");
+  };
+
+  // ========================================
+  // STOP CURRENT EVALUATION
+  // ========================================
+
+  const handleStopEvaluation = async () => {
+    if (
+      !evaluationId ||
+      isStoppingEvaluation
+    ) {
+      return;
+    }
+
+    setIsStoppingEvaluation(true);
+
+    setEvaluationStatus(
+      "Stopping evaluation... The current test will finish before the evaluation stops."
+    );
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/stop-evaluation/${evaluationId}`,
+        {
+          method: "POST",
+        }
+      );
+
+      const data =
+        await getResponseData(response);
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail ||
+          "Unable to stop evaluation."
+        );
+      }
+
+      setEvaluationStatus(
+        data.message ||
+        "Stop request sent. Stopping evaluation..."
+      );
+
+      /*
+       * Do NOT immediately remove the evaluation ID
+       * or stop polling here.
+       *
+       * The backend changes the evaluation status to
+       * "stopping" and then "stopped". Polling lets the
+       * frontend receive the final state safely.
+       */
+
+    } catch (error) {
+      console.error(
+        "Stop evaluation error:",
+        error
+      );
+
+      setIsStoppingEvaluation(false);
+
+      setEvaluationStatus(
+        `Unable to stop evaluation: ${error.message}`
+      );
+    }
+  };
+
+  // ========================================
   // RETRY DASHBOARD
   // ========================================
 
@@ -454,6 +533,10 @@ function App() {
           data.current_test || ""
         );
 
+        // ========================================
+        // EVALUATION COMPLETED
+        // ========================================
+
         if (
           data.status === "completed"
         ) {
@@ -475,6 +558,7 @@ function App() {
           setProgressTest("");
 
           setIsEvaluating(false);
+          setIsStoppingEvaluation(false);
           setEvaluationId(null);
 
           setEvaluationStatus(
@@ -492,12 +576,51 @@ function App() {
           setActivePage("dashboard");
         }
 
+        // ========================================
+        // EVALUATION STOPPED
+        // ========================================
+
+        if (
+          data.status === "stopped"
+        ) {
+          stopProgressPolling();
+
+          setIsEvaluating(false);
+          setIsStoppingEvaluation(false);
+          setEvaluationId(null);
+
+          setProgressCategory("");
+          setProgressTest("");
+
+          const completed =
+            data.completed || 0;
+
+          setEvaluationStatus(
+            `Evaluation stopped successfully. ${completed} test case${completed === 1 ? "" : "s"} completed.`
+          );
+
+          /*
+           * We intentionally do NOT fetch the latest
+           * evaluation here because a stopped run is
+           * not stored as a completed evaluation.
+           *
+           * Existing history remains unchanged.
+           */
+
+          await fetchHistory();
+        }
+
+        // ========================================
+        // EVALUATION FAILED
+        // ========================================
+
         if (
           data.status === "failed"
         ) {
           stopProgressPolling();
 
           setIsEvaluating(false);
+          setIsStoppingEvaluation(false);
           setEvaluationId(null);
 
           setEvaluationStatus(
@@ -517,6 +640,7 @@ function App() {
         stopProgressPolling();
 
         setIsEvaluating(false);
+        setIsStoppingEvaluation(false);
         setEvaluationId(null);
 
         setEvaluationStatus(
@@ -533,6 +657,7 @@ function App() {
     async () => {
 
       setEvaluationStatus("");
+      setIsStoppingEvaluation(false);
 
       if (
         backendStatus !== "connected"
@@ -674,6 +799,7 @@ function App() {
         stopProgressPolling();
 
         setIsEvaluating(false);
+        setIsStoppingEvaluation(false);
         setEvaluationId(null);
 
         setEvaluationStatus(
@@ -694,7 +820,7 @@ function App() {
           ([name, score]) => ({
             name:
               name
-                .replace(/_/g, " ")
+                .replace(/\_/g, " ")
                 .replace(
                   /\b\w/g,
                   (letter) =>
@@ -709,7 +835,6 @@ function App() {
 
   // ========================================
   // NORMALIZE RECOMMENDATION
-  // FIXES [object Object]
   // ========================================
 
   const normalizeRecommendation =
@@ -755,9 +880,6 @@ function App() {
       return [];
     }
 
-    // USE BACKEND RECOMMENDATIONS
-    // AND CONVERT OBJECTS TO TEXT
-
     if (
       Array.isArray(
         evaluationData.recommendations
@@ -775,8 +897,6 @@ function App() {
             recommendation.trim() !== ""
         );
     }
-
-    // FALLBACK RECOMMENDATIONS
 
     const recommendations = [];
 
@@ -924,7 +1044,7 @@ function App() {
       }
 
       return category
-        .replace(/_/g, " ")
+        .replace(/\_/g, " ")
         .replace(
           /\b\w/g,
           (letter) =>
@@ -1618,23 +1738,40 @@ function App() {
 
             </div>
 
-            <button
-              className="evaluate-button"
-              onClick={
-                handleStartEvaluation
-              }
-              disabled={
-                isEvaluating ||
-                backendStatus !==
-                  "connected"
-              }
-            >
+            {/* START / STOP BUTTON */}
 
-              {isEvaluating
-                ? "⏳ Evaluation Running..."
-                : "🚀 Start Evaluation"}
+            {!isEvaluating ? (
 
-            </button>
+              <button
+                className="evaluate-button"
+                onClick={
+                  handleStartEvaluation
+                }
+                disabled={
+                  backendStatus !==
+                    "connected"
+                }
+              >
+                🚀 Start Evaluation
+              </button>
+
+            ) : (
+
+              <button
+                className="stop-evaluation-button"
+                onClick={
+                  handleStopEvaluation
+                }
+                disabled={
+                  isStoppingEvaluation
+                }
+              >
+                {isStoppingEvaluation
+                  ? "⏳ Stopping Evaluation..."
+                  : "⛔ Stop Evaluation"}
+              </button>
+
+            )}
 
             {/* LIVE PROGRESS */}
 
@@ -1647,12 +1784,15 @@ function App() {
                   <div>
 
                     <h3>
-                      Evaluation in Progress
+                      {isStoppingEvaluation
+                        ? "Stopping Evaluation"
+                        : "Evaluation in Progress"}
                     </h3>
 
                     <p>
-                      Please wait while SentinelLLM
-                      evaluates the model.
+                      {isStoppingEvaluation
+                        ? "Finishing the current test and stopping the evaluation safely."
+                        : "Please wait while SentinelLLM evaluates the model."}
                     </p>
 
                   </div>
@@ -1711,6 +1851,20 @@ function App() {
                     </span>
 
                   )}
+
+                </div>
+
+                <div className="stop-warning">
+
+                  <span>
+                    ⚠️
+                  </span>
+
+                  <p>
+                    Stopping will preserve completed
+                    test results. The current API request,
+                    if already running, will finish first.
+                  </p>
 
                 </div>
 
@@ -2122,6 +2276,5 @@ function App() {
     </div>
   );
 }
-
 
 export default App;

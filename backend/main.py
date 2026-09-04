@@ -55,8 +55,6 @@ app = FastAPI(
 # CORS
 # ========================================
 
-# Add the frontend URLs you actually use.
-# For local Vite development:
 ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -102,6 +100,23 @@ evaluations_lock = threading.Lock()
 
 
 # ========================================
+# STORE STOP EVENTS
+# ========================================
+
+"""
+Each evaluation receives its own threading.Event.
+
+When the frontend presses "Stop Evaluation",
+the corresponding event is set.
+
+The runner checks this event between test cases
+and while waiting between requests.
+"""
+
+evaluation_stop_events = {}
+
+
+# ========================================
 # REQUEST MODEL
 # ========================================
 
@@ -137,7 +152,6 @@ def get_safe_error_message(error):
 
     message = str(error)
 
-    # Do not expose unexpected internal errors.
     return message
 
 
@@ -204,7 +218,7 @@ def dataset_summary():
             "difficulty": difficulty_counts,
         }
 
-    except Exception as e:
+    except Exception:
 
         logger.exception(
             "Dataset summary failed"
@@ -401,6 +415,7 @@ def run_evaluation_background(
     model_name,
     dataset_type,
     test_mode,
+    stop_event,
 ):
 
     try:
@@ -410,6 +425,12 @@ def run_evaluation_background(
         # ------------------------------------
 
         with evaluations_lock:
+
+            if (
+                evaluation_id
+                not in evaluations
+            ):
+                return
 
             evaluations[
                 evaluation_id
@@ -427,11 +448,27 @@ def run_evaluation_background(
 
             with evaluations_lock:
 
-                evaluations[
+                if (
                     evaluation_id
-                ].update(
-                    progress_data
-                )
+                    in evaluations
+                ):
+
+                    # Do not overwrite a stopped
+                    # state with a late running update.
+                    current_status = (
+                        evaluations[
+                            evaluation_id
+                        ].get("status")
+                    )
+
+                    if current_status == "stopped":
+                        return
+
+                    evaluations[
+                        evaluation_id
+                    ].update(
+                        progress_data
+                    )
 
         # ------------------------------------
         # RUN EVALUATION
@@ -444,17 +481,87 @@ def run_evaluation_background(
             model_name=model_name,
             test_mode=test_mode,
             progress_callback=update_progress,
+            stop_event=stop_event,
         )
+
+        # ------------------------------------
+        # CHECK WHETHER USER STOPPED IT
+        # ------------------------------------
+
+        if stop_event.is_set():
+
+            with evaluations_lock:
+
+                if (
+                    evaluation_id
+                    in evaluations
+                ):
+
+                    evaluations[
+                        evaluation_id
+                    ].update({
+                        "status": "stopped",
+
+                        "completed":
+                            len(evaluation_results),
+
+                        "total":
+                            (
+                                evaluations[
+                                    evaluation_id
+                                ].get(
+                                    "total",
+                                    len(evaluation_results)
+                                )
+                            ),
+
+                        "percentage":
+                            (
+                                round(
+                                    (
+                                        len(evaluation_results)
+                                        /
+                                        max(
+                                            1,
+                                            evaluations[
+                                                evaluation_id
+                                            ].get(
+                                                "total",
+                                                len(evaluation_results)
+                                            )
+                                        )
+                                    ) * 100,
+                                    2
+                                )
+                            ),
+
+                        "current_test":
+                            None,
+
+                        "current_category":
+                            None,
+
+                        "history_entry":
+                            None,
+
+                        "results":
+                            evaluation_results,
+                    })
+
+            logger.info(
+                "Evaluation %s stopped by user after %s completed test cases.",
+                evaluation_id,
+                len(evaluation_results),
+            )
+
+            return
 
         # ------------------------------------
         # SAVE HISTORY
         # ------------------------------------
 
-        # IMPORTANT:
-        # Only model_name, dataset_type, and
-        # evaluation results are sent here.
-        #
-        # The API key is NOT stored.
+        # Only completed evaluations are saved
+        # to evaluation history.
         history_entry = save_evaluation_history(
             model_name=model_name,
 
@@ -473,38 +580,40 @@ def run_evaluation_background(
 
         with evaluations_lock:
 
-            evaluations[
+            if (
                 evaluation_id
-            ].update({
-                "status": "completed",
+                in evaluations
+            ):
 
-                "completed":
-                    len(evaluation_results),
+                evaluations[
+                    evaluation_id
+                ].update({
+                    "status": "completed",
 
-                "total":
-                    len(evaluation_results),
+                    "completed":
+                        len(evaluation_results),
 
-                "percentage":
-                    100,
+                    "total":
+                        len(evaluation_results),
 
-                "current_test":
-                    None,
+                    "percentage":
+                        100,
 
-                "current_category":
-                    None,
+                    "current_test":
+                        None,
 
-                "history_entry":
-                    history_entry,
+                    "current_category":
+                        None,
 
-                "results":
-                    evaluation_results,
-            })
+                    "history_entry":
+                        history_entry,
+
+                    "results":
+                        evaluation_results,
+                })
 
     except Exception as e:
 
-        # IMPORTANT:
-        # Do not print endpoint configuration
-        # or API key.
         logger.exception(
             "Evaluation %s failed",
             evaluation_id,
@@ -519,10 +628,6 @@ def run_evaluation_background(
                 ].update({
                     "status": "failed",
 
-                    # We return the exception
-                    # message, but the API key
-                    # itself is never included
-                    # anywhere in our code.
                     "error":
                         get_safe_error_message(
                             e
@@ -662,6 +767,12 @@ def evaluate_model(
         )
 
         # ------------------------------------
+        # CREATE STOP EVENT
+        # ------------------------------------
+
+        stop_event = threading.Event()
+
+        # ------------------------------------
         # CREATE EVALUATION RECORD
         # ------------------------------------
 
@@ -701,6 +812,10 @@ def evaluate_model(
                     None,
             }
 
+            evaluation_stop_events[
+                evaluation_id
+            ] = stop_event
+
         # ------------------------------------
         # START BACKGROUND THREAD
         # ------------------------------------
@@ -716,6 +831,7 @@ def evaluate_model(
                 model_name,
                 request.dataset_type,
                 request.test_mode,
+                stop_event,
             ),
 
             daemon=True,
@@ -751,6 +867,134 @@ def evaluate_model(
                 "Unable to start evaluation."
             ),
         )
+
+
+# ========================================
+# STOP EVALUATION
+# ========================================
+
+@app.post(
+    "/stop-evaluation/{evaluation_id}"
+)
+def stop_evaluation(
+    evaluation_id: str
+):
+
+    with evaluations_lock:
+
+        evaluation = evaluations.get(
+            evaluation_id
+        )
+
+        if not evaluation:
+
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    "Evaluation not found."
+                ),
+            )
+
+        status = evaluation.get(
+            "status"
+        )
+
+        # ------------------------------------
+        # ALREADY STOPPED
+        # ------------------------------------
+
+        if status == "stopped":
+
+            return {
+                "message":
+                    "Evaluation has already been stopped.",
+
+                "evaluation_id":
+                    evaluation_id,
+
+                "status":
+                    "stopped",
+            }
+
+        # ------------------------------------
+        # ALREADY COMPLETED
+        # ------------------------------------
+
+        if status == "completed":
+
+            return {
+                "message":
+                    "Evaluation has already completed.",
+
+                "evaluation_id":
+                    evaluation_id,
+
+                "status":
+                    "completed",
+            }
+
+        # ------------------------------------
+        # ALREADY FAILED
+        # ------------------------------------
+
+        if status == "failed":
+
+            return {
+                "message":
+                    "Evaluation has already failed.",
+
+                "evaluation_id":
+                    evaluation_id,
+
+                "status":
+                    "failed",
+            }
+
+        # ------------------------------------
+        # GET STOP EVENT
+        # ------------------------------------
+
+        stop_event = (
+            evaluation_stop_events.get(
+                evaluation_id
+            )
+        )
+
+        if not stop_event:
+
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "Unable to stop this evaluation."
+                ),
+            )
+
+        # ------------------------------------
+        # REQUEST STOP
+        # ------------------------------------
+
+        stop_event.set()
+
+        evaluation.update({
+            "status":
+                "stopping",
+        })
+
+        logger.info(
+            "Stop requested for evaluation %s",
+            evaluation_id,
+        )
+
+        return {
+            "message":
+                "Stop request received. The evaluation will stop after the current test finishes.",
+
+            "evaluation_id":
+                evaluation_id,
+
+            "status":
+                "stopping",
+        }
 
 
 # ========================================

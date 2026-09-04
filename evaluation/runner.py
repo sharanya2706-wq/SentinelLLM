@@ -30,7 +30,8 @@ def run_evaluation(
     api_key=None,
     model_name=None,
     test_mode=False,
-    progress_callback=None
+    progress_callback=None,
+    stop_event=None
 ):
 
     print(
@@ -187,6 +188,38 @@ def run_evaluation(
 
     for _, test_case in tests_to_run.iterrows():
 
+        # ========================================
+        # CHECK STOP REQUEST BEFORE TEST
+        # ========================================
+
+        if (
+            stop_event is not None
+            and stop_event.is_set()
+        ):
+
+            print(
+                "\n===== Evaluation Stopped By User =====\n"
+            )
+
+            if progress_callback:
+
+                progress_callback({
+                    "status": "stopped",
+                    "completed": completed_count,
+                    "total": total_tests,
+                    "percentage": round(
+                        (
+                            completed_count /
+                            max(1, total_tests)
+                        ) * 100,
+                        2
+                    ),
+                    "current_test": None,
+                    "current_category": None
+                })
+
+            break
+
         test_id = test_case["id"]
 
         category = test_case["category"]
@@ -241,6 +274,24 @@ def run_evaluation(
                     CAREERSHIELD_SYSTEM_PROMPT
                 )
             )
+
+            # ========================================
+            # CHECK STOP AFTER MODEL RESPONSE
+            # ========================================
+
+            if (
+                stop_event is not None
+                and stop_event.is_set()
+            ):
+
+                print(
+                    "Stop requested while test was running."
+                )
+
+                # We allow the current completed
+                # test to finish safely before stopping.
+                # Therefore evaluation continues through
+                # scoring and saving this test.
 
             evaluation_result = None
 
@@ -419,6 +470,47 @@ def run_evaluation(
             })
 
         # ========================================
+        # CHECK STOP REQUEST
+        # ========================================
+
+        if (
+            stop_event is not None
+            and stop_event.is_set()
+        ):
+
+            print(
+                "\nStop request received."
+            )
+
+            print(
+                "Current test completed."
+            )
+
+            print(
+                f"Completed test cases: "
+                f"{completed_count}"
+            )
+
+            if progress_callback:
+
+                progress_callback({
+                    "status": "stopped",
+                    "completed": completed_count,
+                    "total": total_tests,
+                    "percentage": round(
+                        (
+                            completed_count /
+                            total_tests
+                        ) * 100,
+                        2
+                    ),
+                    "current_test": None,
+                    "current_category": None
+                })
+
+            break
+
+        # ========================================
         # WAIT BEFORE NEXT REQUEST
         # ========================================
 
@@ -429,7 +521,77 @@ def run_evaluation(
                 "next request..."
             )
 
-            time.sleep(12)
+            # ========================================
+            # INTERRUPTIBLE WAIT
+            # ========================================
+
+            if stop_event is not None:
+
+                stopped_during_wait = (
+                    stop_event.wait(12)
+                )
+
+                if stopped_during_wait:
+
+                    print(
+                        "\nStop request received "
+                        "during waiting period."
+                    )
+
+                    if progress_callback:
+
+                        progress_callback({
+                            "status": "stopped",
+                            "completed": completed_count,
+                            "total": total_tests,
+                            "percentage": round(
+                                (
+                                    completed_count /
+                                    total_tests
+                                ) * 100,
+                                2
+                            ),
+                            "current_test": None,
+                            "current_category": None
+                        })
+
+                    break
+
+            else:
+
+                time.sleep(12)
+
+    # ========================================
+    # CHECK FINAL STOP STATE
+    # ========================================
+
+    if (
+        stop_event is not None
+        and stop_event.is_set()
+    ):
+
+        print(
+            "\n===== Evaluation Stopped =====\n"
+        )
+
+        if progress_callback:
+
+            progress_callback({
+                "status": "stopped",
+                "completed": completed_count,
+                "total": total_tests,
+                "percentage": round(
+                    (
+                        completed_count /
+                        max(1, total_tests)
+                    ) * 100,
+                    2
+                ),
+                "current_test": None,
+                "current_category": None
+            })
+
+        return results
 
     # ========================================
     # FINAL PROGRESS UPDATE

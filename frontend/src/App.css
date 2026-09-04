@@ -766,6 +766,42 @@ header p {
 
 
 /* ========================================
+   STOP EVALUATION BUTTON
+======================================== */
+
+.stop-evaluation-button {
+  display: block;
+  width: 295px;
+  max-width: 100%;
+  margin: 25px auto 0;
+  padding: 15px 24px;
+  border: 1px solid #d76666;
+  border-radius: 7px;
+  background: linear-gradient(
+    135deg,
+    #c85c5c,
+    #d76666
+  );
+  color: white;
+  font-size: 17px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 7px 18px rgba(199, 91, 91, 0.2);
+  transition: 0.2s ease;
+}
+
+.stop-evaluation-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(199, 91, 91, 0.28);
+}
+
+.stop-evaluation-button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+
+/* ========================================
    LIVE EVALUATION PROGRESS
 ======================================== */
 
@@ -834,6 +870,35 @@ header p {
 .evaluation-progress-footer span {
   font-size: 13px;
   color: #75689a;
+}
+
+
+/* ========================================
+   STOP WARNING
+======================================== */
+
+.stop-warning {
+  margin-top: 18px;
+  padding: 13px 15px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #fff8ed;
+  border: 1px solid #f1d7ad;
+  border-radius: 10px;
+}
+
+.stop-warning span {
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.stop-warning p {
+  color: #8d6c3e;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  max-width: none;
 }
 
 
@@ -1281,7 +1346,8 @@ header p {
     flex-direction: column;
   }
 
-  .evaluate-button {
+  .evaluate-button,
+  .stop-evaluation-button {
     width: 100%;
   }
 
