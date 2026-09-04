@@ -1,3 +1,13 @@
+---
+title: SentinelLLM
+emoji: 🛡️
+colorFrom: purple
+colorTo: blue
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # 🛡️ SentinelLLM
 
 ## LLM Safety and Reliability Evaluation Framework
@@ -120,4 +130,6 @@ SentinelLLM/
 │
 ├── app.py
 ├── config.py
+├── Dockerfile
+├── README.md
 └── .gitignore
